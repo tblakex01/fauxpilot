@@ -24,7 +24,7 @@ import os
 import sys
 from transformers import GPTJForCausalLM
 dir_path = os.path.dirname(os.path.realpath(__file__))
-sys.path.append(dir_path + "/../../../..")
+sys.path.append(f"{dir_path}/../../../..")
 sys.path.append(dir_path)
 
 def get_weight_data_type(data_type):
@@ -44,31 +44,31 @@ def split_and_convert_process(i, saved_dir,factor,key,args, val):
 
         # shared weights, only need to convert the weights of rank 0
         if i == 0:
-            saved_path = saved_dir + "/model." + key + ".bin"
+            saved_path = f"{saved_dir}/model.{key}.bin"
             val.tofile(saved_path)
 
     elif key.find("attention.dense.weight") != -1 or key.find("mlp.dense_4h_to_h.weight") != -1:
         split_vals = np.split(val, factor, axis=0)
         for j in range(factor):
-            saved_path = saved_dir + "/model." + key + ".%d.bin" % (i * factor + j)
+            saved_path = f"{saved_dir}/model.{key}" + ".%d.bin" % (i * factor + j)
             split_vals[j].tofile(saved_path)
 
     elif key.find("mlp.dense_h_to_4h.weight") != -1 or key.find("mlp.dense_h_to_4h.bias") != -1:
 
         split_vals = np.split(val, factor, axis=-1)
         for j in range(factor):
-            saved_path = saved_dir + "/model." + key + ".%d.bin" % (i * factor + j)
+            saved_path = f"{saved_dir}/model.{key}" + ".%d.bin" % (i * factor + j)
             split_vals[j].tofile(saved_path)
 
     elif key.find("attention.query_key_value.weight") != -1:
         split_vals = np.split(val, factor, axis=-1)
 
         for j in range(factor):
-            saved_path = saved_dir + "/model." + key + ".%d.bin" % (i * factor + j)
+            saved_path = f"{saved_dir}/model.{key}" + ".%d.bin" % (i * factor + j)
             split_vals[j].tofile(saved_path)
 
     else:
-        print("[ERROR] cannot find key '{}'".format(key))
+        print(f"[ERROR] cannot find key '{key}'")
 
 def split_and_convert(args):
     saved_dir = args.saved_dir + "/%d-gpu/" % args.infer_gpu_num
@@ -84,7 +84,7 @@ def split_and_convert(args):
     factor = (int)(i_gpu_num / t_gpu_num)
 
     model = GPTJForCausalLM.from_pretrained(args.in_file)
-    
+
     try:
         config = configparser.ConfigParser()
         config["gpt"] = {}
@@ -93,10 +93,10 @@ def split_and_convert(args):
         for k, v in vars(model.config).items():
             config["gpt"][k] = f"{v}"
         config["gpt"]["weight_data_type"] = args.weight_data_type
-        with open((Path(saved_dir) / f"config.ini").as_posix(), 'w') as configfile:
+        with open((Path(saved_dir) / "config.ini").as_posix(), 'w') as configfile:
             config.write(configfile)
     except:
-        print(f"Fail to save the config in config.ini.")
+        print("Fail to save the config in config.ini.")
     np_weight_data_type = get_weight_data_type(args.weight_data_type)
 
     huggingface_model_name_pattern = [
@@ -109,7 +109,7 @@ def split_and_convert(args):
         "mlp.fc_out.bias",
         "mlp.fc_out.weight",
     ]
-    
+
     ft_model_name_pattern = [
         "input_layernorm.bias",
         "input_layernorm.weight",
@@ -120,7 +120,7 @@ def split_and_convert(args):
         "mlp.dense_4h_to_h.bias",
         "mlp.dense_4h_to_h.weight",
     ]
-    
+
     torch.multiprocessing.set_start_method("spawn")
     pool = multiprocessing.Pool(args.processes)
     for name, param in model.named_parameters():
@@ -128,15 +128,30 @@ def split_and_convert(args):
             continue
         print(name)
         if name == 'transformer.wte.weight':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.wte.bin")
+            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(
+                f"{saved_dir}model.wte.bin"
+            )
+
         elif name == 'transformer.ln_f.bias':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.bias.bin")
+            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(
+                f"{saved_dir}model.final_layernorm.bias.bin"
+            )
+
         elif name == 'transformer.ln_f.weight':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.final_layernorm.weight.bin")
+            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(
+                f"{saved_dir}model.final_layernorm.weight.bin"
+            )
+
         elif name == 'lm_head.weight':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.lm_head.weight.bin")
+            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(
+                f"{saved_dir}model.lm_head.weight.bin"
+            )
+
         elif name == 'lm_head.bias':
-            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(saved_dir + "model.lm_head.bias.bin")
+            param.detach().cpu().numpy().astype(np_weight_data_type).tofile(
+                f"{saved_dir}model.lm_head.bias.bin"
+            )
+
         else:
             for i in range(len(huggingface_model_name_pattern)):
                 if name.find(huggingface_model_name_pattern[i]) != -1:
@@ -145,11 +160,14 @@ def split_and_convert(args):
                         layer = name.split('.')[2]
                         base_k = f'transformer.h.{layer}.'
                         w = model.state_dict()
-                        QKV_w = torch.stack([
-                            w[base_k + "attn.q_proj.weight"],
-                            w[base_k + "attn.k_proj.weight"],
-                            w[base_k + "attn.v_proj.weight"],
-                        ]) # [qkv, n_heads * dim_head, latent_space]
+                        QKV_w = torch.stack(
+                            [
+                                w[f"{base_k}attn.q_proj.weight"],
+                                w[f"{base_k}attn.k_proj.weight"],
+                                w[f"{base_k}attn.v_proj.weight"],
+                            ]
+                        )
+
                         QKV_w = QKV_w.permute(2, 0, 1)
                         weights = QKV_w.detach().cpu().numpy().astype(np_weight_data_type)
                     else:
@@ -182,7 +200,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     print("\n=============== Argument ===============")
     for key in vars(args):
-        print("{}: {}".format(key, vars(args)[key]))
+        print(f"{key}: {vars(args)[key]}")
     print("========================================")
 
     split_and_convert(args)

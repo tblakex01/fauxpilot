@@ -60,7 +60,7 @@ print('Converting...')
 with torch.no_grad():
     cg_model.eval()
     gptj_model.eval()
-    
+
     for name, param in cg_model.named_parameters():
         # print(f'Converting {name}')
         # Handle the qkv weights separately because we need to split them
